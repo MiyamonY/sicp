@@ -178,6 +178,7 @@
            assignment-value
            definition?
            definition-variable
+           definition-value
            quated?
            begin?
            begin-actions
@@ -223,6 +224,8 @@
     (tagged-list? exp 'define))
   (define (definition-variable exp)
     (cadr exp))
+  (define (definition-value exp)
+    (caddr exp))
 
   (define (quated? exp)
     (tagged-list? exp 'quate))
@@ -307,16 +310,6 @@
                          env)
     'ok)
 
-  (define (eval-definition exp env)
-    (define-variable! (definition-variable exp)
-      (eval (assignment-value exp) env)
-      env)
-    'ok)
-
-  (define (eval-if exp env)
-    (if (true? (eval (if-predicate exp) env))
-        (eval (if-consequent exp) env)
-        (eval (if-altenative exp) env)))
 
   (define (make-procedure parameters body env)
     (list 'procedure parameters body env))
@@ -374,33 +367,89 @@
           (else
            (error "Unknown procedure type -- APPLY" procedure))))
 
-  (define (eval exp env)
-    (define (list-of-values exps env)
-      (define (no-operands? ops) (null? ops))
-      (define (first-operand ops) (car ops))
-      (define (rest-operands ops) (cdr exps))
-      (if (no-operands? exps)
-          (list)
-          (cons (eval (first-operand exps) env)
-                (list-of-values (rest-operands exps) env))))
-    (cond ((self-evaluating? exp) exp)
-          ((variable? exp) (lookup-variable-value exp env))
-          ((quated? exp) (text-of-quotation exp))
-          ((assignment? exp) (eval-assignment exp env))
-          ((definition? exp) (eval-definition exp env))
-          ((if? exp) (eval-if exp env))
-          ((lambda? exp) (make-procedure (lambda-parameters exp)
-                                         (lambda-body exp)
-                                         env))
-          ((begin? exp)
-           (eval-sequence (begin-actions exp) env))
-          ((cond? exp)
-           (eval (cond->if exp) env))
-          ((application? exp)
-           (apply (eval (operator exp) env)
-                  (list-of-values (operands exp) env)))
+  (define (analyze-self-evaluating exp)
+    (lambda (env) exp))
+
+  (define (analyze-quated exp)
+    (let ((qval (text-of-quotation exp)))
+      (lambda (env) qval)))
+
+  (define (analyze-variable exp)
+    (lambda (env) (lookup-variable-value exp env)))
+
+  (define (analyze-assignment exp)
+    (let ((var (assignment-variable exp))
+          (vproc (analyze (assignment-value exp))))
+      (lambda (env) (define-variable! var (vproc env) env))))
+
+  (define (analyze-sequence exps)
+    (define (sequentially proc1 proc2)
+      (lambda (env) (proc1 env) (proc2 env)))
+    (define (loop first-proc rest-procs)
+      (if (null? rest-procs)
+          first-proc
+          (loop (sequentially first-proc (car rest-procs))
+                (cdr rest-procs))))
+    (let  ((procs (map analyze exps)))
+      (if (null? procs)
+          (error "Empty sequence -ANALYZE")
+          (loop (car procs) (cdr procs)))))
+
+  (define (analyze-if exp)
+    (let ((pproc (analyze (if-predicate exp)))
+          (cproc (analyze (if-consequent exp)))
+          (aproc (analyze (if-altenative exp))))
+      (lambda (env)
+        (if (true? (pproc env))
+            (cproc env)
+            (aproc env)))))
+
+  (define (analyze-lambda exp)
+    (let ((vars (lambda-parameters exp))
+          (bproc (analyze-sequence (lambda-body exp))))
+      (lambda (env) (make-procedure vars bproc env))))
+
+  (define (analyze-definition exp)
+    (let ((var (definition-variable exp))
+          (vproc (analyze (definition-value exp))))
+      (lambda (env)
+        (define-variable! var (vproc env) env)
+        'ok)))
+
+  (define (execute-application proc args)
+    (cond ((primitive-procedure? proc) (apply-primitive-procedure proc args))
+          ((compound-procedure? proc)
+           ((procedure-body proc)
+            (extend-environment (list->mlist (procedure-parameters proc))
+                                (list->mlist args)
+                                (procedure-environment proc))))
           (else
-           (error "Unknown expression type -- EVAL" exp)))))
+           (error "Unknown procedure type -- EXECUTE-APPLICATION" proc))))
+
+  (define (analyze-application exp)
+    (let ((pproc (analyze (operator exp)))
+          (aprocs (map analyze (operands exp))))
+      (lambda (env) (execute-application (pproc env)
+                                         (map (lambda (aproc) (aproc env))
+                                              aprocs)))))
+
+  (define (analyze exp)
+    (cond ((self-evaluating? exp) (analyze-self-evaluating exp))
+          ((variable? exp) (analyze-variable exp))
+          ((quated? exp) (analyze-quated exp))
+          ((assignment? exp) (analyze-assignment exp))
+          ((definition? exp) (analyze-definition exp))
+          ((if? exp) (analyze-if exp))
+          ((lambda? exp) (analyze-lambda exp))
+          ((begin? exp) (analyze-sequence (begin-actions exp)))
+          ((cond? exp) (analyze (cond->if exp)))
+          ((application? exp) (analyze-application exp))
+          (else
+           (error "Unknown expression type -- ANALYZE" exp))))
+
+  (define (eval exp env)
+    ((analyze exp) env))
+  )
 
 (module+ test
   (require (submod ".." eval))
@@ -418,8 +467,8 @@
      (test-eqv? "eval string" (eval "aaa" test-env) "aaa")
      (test-suite
       "eval variable"
-      (test-eqv? "variable found" (eval 'x test-env) 10)
-      (test-exn "eval not defined variable" exn:fail?
+      (test-eqv? "defined variable " (eval 'x test-env) 10)
+      (test-exn "variable not defined" exn:fail?
                 (lambda () (eval 'w test-env))))
      (test-eq? "eval quated" (eval '(quate a) test-env) 'a)
      (test-eqv? "eval assignment" (eval '(begin (set! x (+ 3 5)) x) test-env) 8)
@@ -429,8 +478,6 @@
       (test-eqv? "predicate true" (eval '(if true 1) test-env) 1)
       (test-eqv? "predicate false" (eval '(if false 1 2) test-env) 2)
       (test-eq? "else clause not exist" (eval '(if false 1) test-env) false))
-     (test-equal? "eval lambda" (eval '(lambda (x y) (+ x y)) test-env)
-                  (list 'procedure '(x y) '((+ x y)) test-env))
      (test-equal? "eval begin" (eval '(begin
                                         (define z 100)
                                         (set! z 30)
@@ -439,9 +486,9 @@
       "eval cond"
       (test-eqv? "first clause" (eval '(cond (true 1) (else 3)) test-env) 1)
       (test-eqv? "not first clause" (eval '(cond (false 2)
-                                            (false "aaa")
-                                            ((= 1 1) (+ 1 2))
-                                            (else (* 1 2))) test-env) 3)
+                                                 (false "aaa")
+                                                 ((= 1 1) (+ 1 2))
+                                                 (else (* 1 2))) test-env) 3)
       (test-eqv? "eval else clause" (eval '(cond (false 2)
                                                  (false "aaa")
                                                  ((= 1 3) (+ 1 2))
@@ -478,19 +525,19 @@
                                 (fib (* 5 2)))
                              test-env) 55)
       (test-equal? "list lengths by map"
-                 (eval '(begin
-                          (define length
-                            (lambda (l)
-                              (if (null? l)
-                                  0
-                                  (+ 1 (length (cdr l))))))
-                          (define map
-                            (lambda (proc l)
-                              (if (null? l)
-                                  (list)
-                                  (cons (proc (car l)) (map proc (cdr l))))))
-                          (map length (quate ((a) (a b) (a b c) (a b c d)))))
-                       test-env) (list 1 2 3 4)))))))
+                   (eval '(begin
+                            (define length
+                              (lambda (l)
+                                (if (null? l)
+                                    0
+                                    (+ 1 (length (cdr l))))))
+                            (define map
+                              (lambda (proc l)
+                                (if (null? l)
+                                    (list)
+                                    (cons (proc (car l)) (map proc (cdr l))))))
+                            (map length (quate ((a) (a b) (a b c) (a b c d)))))
+                         test-env) (list 1 2 3 4)))))))
 
 (module repl racket
   (require (submod ".." env))
