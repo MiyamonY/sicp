@@ -87,3 +87,19 @@
 (module+ test
   (check-= (sqrt 9) 3.0 0.0001)
   (check-= (sqrt (+ 100 37)) 11.704699 0.001))
+
+;; 1.1.8 ブラックボッス抽象としての手続き
+
+(define (sqrt2 x)
+  (define (good-enough? guess)
+    (< (abs (- (square guess) x)) 1e-4))
+  (define (improve guess)
+    (average guess (/ x guess)))
+  (define (sqrt-iter guess)
+    (if (good-enough? guess)
+        guess
+        (sqrt-iter (improve guess))))
+  (sqrt-iter 1.0))
+
+(module+ test
+  (check-= (sqrt2 2) 1.414121356 1e-4))
