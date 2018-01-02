@@ -103,3 +103,23 @@
 
 (module+ test
   (check-= (sqrt2 2) 1.414121356 1e-4))
+
+;; 1.2 手続きとその生成するプロセス
+;; 1.2.1 線形再帰と反復
+(define (factorial n)
+  (if (= n 1 )
+      1
+      (* n (factorial (- n 1)))))
+
+(module+ test
+  (check-eq? (factorial 4) 24))
+
+(define (ifactorial n)
+  (define (fact-iter product counter)
+    (if (> counter n)
+        product
+        (fact-iter (* product counter) (+ counter 1))))
+  (fact-iter 1 1))
+
+(module+ test
+  (check-eq? (ifactorial 4) 24))
