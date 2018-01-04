@@ -164,3 +164,38 @@
   (check-eq? (count-change 0) 1)
   (check-eq? (count-change 3) 1)
   (check-eq? (count-change 15) 6))
+
+;; 1.2.4 べき乗
+(define (expt b n)
+  (if (= n 0)
+      1
+      (* b (expt b (- n 1)))))
+
+(define (expt2 b n)
+  (expt-iter b n 1))
+
+(define (expt-iter b counter product)
+  (if (= counter 0)
+      product
+      (expt-iter b
+                 (- counter 1)
+                 (* b product))))
+
+(module+ test
+  (check-eq? (expt 2 3) 8)
+  (check-eq? (expt 3 3) 27)
+
+  (check-eq? (expt 3 10) (expt2 3 10)))
+
+
+(define (fast-expt b n)
+  (cond ((= n 0) 1)
+        ((even? n) (square (fast-expt b (/ n 2))))
+        (else (* b (fast-expt b (- n 1))))))
+
+(define (even? n)
+  (= (remainder n 2) 0))
+
+(module+ test
+  (check-eq? (fast-expt 3 3) 27)
+  (check-eq? (fast-expt 3 1) 3))
