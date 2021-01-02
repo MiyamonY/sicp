@@ -4,10 +4,10 @@
 (define (halve a) (/ a 2))
 
 (define (prod a b)
-  (cond ((= b 0) a)
+  (cond ((= b 0) 0)
         ((even? b) (prod (double a) (halve b))) ; a * b = 2a * b/2
         (else
-         (+ b (prod a (- b 1))))))      ; a * b = b + a*(b-1)
+         (+ a (prod a (- b 1))))))      ; a * b = a + a*(b-1)
 
 (module+ test
   (require rackunit)
