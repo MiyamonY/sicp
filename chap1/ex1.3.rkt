@@ -8,10 +8,15 @@
 
 (define (square x) (* x x))
 
-(define (sum-of-bigger2 a b c)
-  (square (- (+ a b c) (min a b c))))
+(define (sum-of-square-bigger2 a b c)
+  (cond ((and (>= a c) (>= b c)) (+ (square a) (square b)))
+        ((and (>= b a) (>= c a)) (+ (square b) (square c)))
+        ((and (>= c b) (>= a b)) (+ (square c) (square a)))))
 
 (module+ test
   (require rackunit)
-  (check-eq? (sum-of-bigger2 1 2 3) 25)
-  (check-eq? (sum-of-bigger2 5 4 3) 81))
+  (check-eq? (sum-of-square-bigger2 1 2 3) 13)
+  (check-eq? (sum-of-square-bigger2 2 3 1) 13)
+  (check-eq? (sum-of-square-bigger2 3 2 1) 13)
+  (check-eq? (sum-of-square-bigger2 3 3 2) 18)
+  (check-eq? (sum-of-square-bigger2 5 4 3) 41))

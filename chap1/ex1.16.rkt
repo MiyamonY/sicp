@@ -1,21 +1,15 @@
-;;;
-;; File:  ex1.16.rkt
-;; Author: ymiyamoto
-;;
-;; Created on Fri Jan  5 06:46:02 2018
-;;
 #lang racket
 
-(define (expt b n)
-  (expt-iter b n 1))
-
-(define (expt-iter b counter product)
-  (cond ((= counter 0) product)
-        ((even? counter) (expt-iter (* b b) (/ counter 2) product))
-        (else
-         (expt-iter b (- counter 1) (* b product)))))
+(define (fast-exp b n)
+  (define (aux v b n)
+    (cond ((= n 0) v)
+          ((even? n) (aux v (* b b) (/ n 2)))
+          (else (aux (* v b) b (- n 1)))))
+  (aux 1 b n))
 
 (module+ test
   (require rackunit)
-  (check-eq? (expt 2 3) 8)
-  (check-eq? (expt 3 3) 27))
+
+  (check-eq? (fast-exp 2 0) 1)
+  (check-eq? (fast-exp 2 3) 8)
+  (check-eq? (fast-exp 2 10) 1024))
